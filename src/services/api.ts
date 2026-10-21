@@ -39,6 +39,26 @@ export interface PaymentIntentResponse {
   error?: string;
 }
 
+async function safeFetchJson<T = any>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const res = await fetch(input, init);
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return await res.json();
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error('API route not found (404). Please ensure serverless functions are deployed on Vercel.');
+    }
+    throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 100)}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('Server returned an unexpected non-JSON response.');
+  }
+}
+
 export const api = {
   // Check health and connection to Neon Postgres
   async checkHealth(): Promise<DbHealthStatus> {
@@ -194,12 +214,11 @@ export const api = {
   // Admin Login with password
   async adminLogin(password: string): Promise<AdminLoginResponse> {
     try {
-      const res = await fetch('/api/admin/login', {
+      return await safeFetchJson('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
-      return await res.json();
     } catch (err: any) {
       return { success: false, message: err.message || 'Login request failed' };
     }
