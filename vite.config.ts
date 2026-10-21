@@ -1,7 +1,7 @@
 import { defineConfig, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import url from 'url';
-import { handleApiRequest } from './api/_handler';
+import handler from './api/index.js';
 
 function neonApiPlugin(): Plugin {
   return {
@@ -13,7 +13,7 @@ function neonApiPlugin(): Plugin {
         if (!pathname.startsWith('/api')) {
           return next();
         }
-        await handleApiRequest(req, res);
+        await handler(req, res);
       });
     },
     configurePreviewServer(server) {
@@ -23,7 +23,7 @@ function neonApiPlugin(): Plugin {
         if (!pathname.startsWith('/api')) {
           return next();
         }
-        await handleApiRequest(req, res);
+        await handler(req, res);
       });
     },
   };
