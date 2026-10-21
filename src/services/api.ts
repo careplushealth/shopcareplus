@@ -303,6 +303,18 @@ export const api = {
 
   // Admin: Create new product
   async adminCreateProduct(token: string, product: Partial<Product>): Promise<{ success: boolean; message?: string; id?: string; error?: string }> {
+    const newId = product.id || `cp-${Date.now().toString(36)}`;
+    const fullProduct = { ...product, id: newId } as Product;
+
+    // Always update local cache and notify listeners immediately
+    try {
+      const stored = localStorage.getItem('careplus_custom_products');
+      const custom: Product[] = stored ? JSON.parse(stored) : [];
+      custom.unshift(fullProduct);
+      localStorage.setItem('careplus_custom_products', JSON.stringify(custom));
+      window.dispatchEvent(new Event('careplus_products_updated'));
+    } catch {}
+
     try {
       const res = await fetch('/api/admin/products', {
         method: 'POST',
@@ -310,7 +322,7 @@ export const api = {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(product),
+        body: JSON.stringify(fullProduct),
       });
       if (res.ok) {
         const data = await res.json();
@@ -318,21 +330,30 @@ export const api = {
       }
     } catch {}
 
-    // Fallback persistence
-    try {
-      const stored = localStorage.getItem('careplus_custom_products');
-      const custom: Product[] = stored ? JSON.parse(stored) : [];
-      const newProd = { ...product, id: product.id || `cp-${Date.now()}` } as Product;
-      custom.unshift(newProd);
-      localStorage.setItem('careplus_custom_products', JSON.stringify(custom));
-      return { success: true, message: 'Product added successfully!', id: newProd.id };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
+    return { success: true, message: 'Product added successfully!', id: newId };
   },
 
   // Admin: Update existing product
   async adminUpdateProduct(token: string, id: string, product: Partial<Product>): Promise<{ success: boolean; message?: string; error?: string }> {
+    // Always update local cache and notify listeners immediately
+    try {
+      const stored = localStorage.getItem('careplus_custom_products');
+      let custom: Product[] = stored ? JSON.parse(stored) : [];
+      const idx = custom.findIndex((p) => p.id === id);
+      if (idx !== -1) {
+        custom[idx] = { ...custom[idx], ...product };
+      } else {
+        const catalogP = PRODUCTS.find((p) => p.id === id);
+        if (catalogP) {
+          custom.push({ ...catalogP, ...product } as Product);
+        } else {
+          custom.push({ id, ...product } as Product);
+        }
+      }
+      localStorage.setItem('careplus_custom_products', JSON.stringify(custom));
+      window.dispatchEvent(new Event('careplus_products_updated'));
+    } catch {}
+
     try {
       const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
         method: 'PUT',
@@ -348,28 +369,28 @@ export const api = {
       }
     } catch {}
 
-    // Fallback persistence
-    try {
-      const stored = localStorage.getItem('careplus_custom_products');
-      let custom: Product[] = stored ? JSON.parse(stored) : [];
-      const idx = custom.findIndex((p) => p.id === id);
-      if (idx !== -1) {
-        custom[idx] = { ...custom[idx], ...product };
-      } else {
-        const catalogP = PRODUCTS.find((p) => p.id === id);
-        if (catalogP) {
-          custom.push({ ...catalogP, ...product } as Product);
-        }
-      }
-      localStorage.setItem('careplus_custom_products', JSON.stringify(custom));
-      return { success: true, message: 'Product updated successfully!' };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
+    return { success: true, message: 'Product updated successfully!' };
   },
 
   // Admin: Delete product
   async adminDeleteProduct(token: string, id: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    // Always record deleted ID locally and notify listeners immediately
+    try {
+      const deleted: string[] = JSON.parse(localStorage.getItem('careplus_deleted_products') || '[]');
+      if (!deleted.includes(id)) {
+        deleted.push(id);
+        localStorage.setItem('careplus_deleted_products', JSON.stringify(deleted));
+      }
+
+      const stored = localStorage.getItem('careplus_custom_products');
+      if (stored) {
+        let custom: Product[] = JSON.parse(stored);
+        custom = custom.filter((p) => p.id !== id);
+        localStorage.setItem('careplus_custom_products', JSON.stringify(custom));
+      }
+      window.dispatchEvent(new Event('careplus_products_updated'));
+    } catch {}
+
     try {
       const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
         method: 'DELETE',
@@ -381,22 +402,7 @@ export const api = {
       }
     } catch {}
 
-    // Fallback persistence
-    try {
-      const stored = localStorage.getItem('careplus_custom_products');
-      let custom: Product[] = stored ? JSON.parse(stored) : [];
-      custom = custom.filter((p) => p.id !== id);
-      localStorage.setItem('careplus_custom_products', JSON.stringify(custom));
-
-      const deleted: string[] = JSON.parse(localStorage.getItem('careplus_deleted_products') || '[]');
-      if (!deleted.includes(id)) {
-        deleted.push(id);
-        localStorage.setItem('careplus_deleted_products', JSON.stringify(deleted));
-      }
-      return { success: true, message: 'Product deleted successfully!' };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
+    return { success: true, message: 'Product deleted successfully!' };
   },
 
   // Admin: Get orders

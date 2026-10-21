@@ -93,6 +93,34 @@ interface ShopContextType {
   refetchProducts: () => Promise<void>;
 }
 
+// Helper to apply local custom product additions, edits, and deletions
+function applyLocalProductOverrides(baseProducts: Product[]): Product[] {
+  try {
+    const deleted: string[] = JSON.parse(localStorage.getItem('careplus_deleted_products') || '[]');
+    const custom: Product[] = JSON.parse(localStorage.getItem('careplus_custom_products') || '[]');
+
+    // 1. Filter out deleted products
+    let list = baseProducts.filter((p) => !deleted.includes(p.id));
+
+    // 2. Apply modifications to existing products
+    list = list.map((p) => {
+      const override = custom.find((c) => c.id === p.id);
+      return override ? { ...p, ...override } : p;
+    });
+
+    // 3. Prepend newly added custom products
+    custom.forEach((c) => {
+      if (!list.some((p) => p.id === c.id) && !deleted.includes(c.id)) {
+        list.unshift(c);
+      }
+    });
+
+    return list;
+  } catch {
+    return baseProducts;
+  }
+}
+
 const ShopContext = createContext<ShopContextType | undefined>(undefined);
 
 export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -140,8 +168,8 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Products State synchronized with Neon Postgres database
-  const [products, setProducts] = useState<Product[]>(PRODUCTS);
+  // Products State synchronized with Neon Postgres database and local overrides
+  const [products, setProducts] = useState<Product[]>(() => applyLocalProductOverrides(PRODUCTS));
   const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(false);
 
   const refetchProducts = async () => {
@@ -149,10 +177,13 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await api.getPublicProducts();
       if (res.success && res.products && res.products.length > 0) {
-        setProducts(res.products);
+        setProducts(applyLocalProductOverrides(res.products));
+      } else {
+        setProducts(applyLocalProductOverrides(PRODUCTS));
       }
     } catch (err) {
       console.warn('Could not fetch products from Neon Postgres, using initial dataset:', err);
+      setProducts(applyLocalProductOverrides(PRODUCTS));
     } finally {
       setIsLoadingProducts(false);
     }
@@ -160,6 +191,18 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     refetchProducts();
+
+    // Re-fetch products instantly whenever Admin Portal creates, updates, or deletes a product
+    const handleProductChange = () => {
+      refetchProducts();
+    };
+
+    window.addEventListener('careplus_products_updated', handleProductChange);
+    window.addEventListener('storage', handleProductChange);
+    return () => {
+      window.removeEventListener('careplus_products_updated', handleProductChange);
+      window.removeEventListener('storage', handleProductChange);
+    };
   }, []);
 
   // Cart State with localStorage persistence
