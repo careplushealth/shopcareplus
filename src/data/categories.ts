@@ -1,0 +1,58 @@
+import { CategoryItem } from '../types';
+
+export const CATEGORIES: CategoryItem[] = [
+  {
+    id: 'vitamins-supplements',
+    name: 'Vitamins & Supplements',
+    slug: 'vitamins-supplements',
+    description: 'Scientifically backed daily vitamins, minerals, herbal extracts and probiotics for all stages of life.',
+    image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?q=80&w=800&auto=format&fit=crop',
+    itemCount: 15,
+    subcategories: ['Multivitamins', 'Vitamin D & Sunshine', 'Omega 3 & Fish Oils', 'Probiotics & Gut Health', 'Herbal Remedies'],
+  },
+  {
+    id: 'everyday-healthcare',
+    name: 'Everyday Healthcare',
+    slug: 'everyday-healthcare',
+    description: 'Trusted remedies for pain relief, digestive care, eye and ear comfort, cough and seasonal wellness.',
+    image: 'https://images.unsplash.com/photo-1584017911766-d451b3d0e843?q=80&w=800&auto=format&fit=crop',
+    itemCount: 22,
+    subcategories: ['Pain Relief', 'Digestive Health', 'Eye & Ear Care', 'Cough, Cold & Flu', 'Allergy & Hayfever'],
+  },
+  {
+    id: 'personal-care',
+    name: 'Personal Care',
+    slug: 'personal-care',
+    description: 'Dermatologist-recommended skincare, oral hygiene, gentle hair and scalp care for daily wellbeing.',
+    image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?q=80&w=800&auto=format&fit=crop',
+    itemCount: 12,
+    subcategories: ['Sensitive Skincare', 'Oral Care', 'Hair & Scalp Health', 'Body & Bath', 'Sun Protection'],
+  },
+  {
+    id: 'mobility-living-aids',
+    name: 'Mobility & Living Aids',
+    slug: 'mobility-living-aids',
+    description: 'Thoughtfully designed daily living aids, ergonomic supports, pill management and home safety solutions.',
+    image: 'https://images.unsplash.com/photo-1576765608535-5f04d1e3f289?q=80&w=800&auto=format&fit=crop',
+    itemCount: 8,
+    subcategories: ['Supports & Joint Braces', 'Pill Organisers & Cutters', 'Daily Living Aids', 'Bathroom Safety', 'Walking Aids'],
+  },
+  {
+    id: 'first-aid',
+    name: 'First Aid',
+    slug: 'first-aid',
+    description: 'Comprehensive family first aid kits, antiseptic washes, sterile wound dressings, and blister treatments.',
+    image: 'https://images.unsplash.com/photo-1603398938378-e54eab446dde?q=80&w=800&auto=format&fit=crop',
+    itemCount: 7,
+    subcategories: ['First Aid Kits', 'Dressings & Plasters', 'Antiseptic Care', 'Burn & Blister Care'],
+  },
+  {
+    id: 'health-wellness',
+    name: 'Health & Wellness',
+    slug: 'health-wellness',
+    description: 'Calming natural sleep aids, stress balance remedies, aromatherapy essentials and muscle recovery tools.',
+    image: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop',
+    itemCount: 9,
+    subcategories: ['Diabetes & Blood Glucose', 'Sleep & Relaxation', 'Stress & Mood Balance', 'Immunity Boosters', 'Aromatherapy & Oils', 'Fitness & Muscle Care'],
+  },
+];
