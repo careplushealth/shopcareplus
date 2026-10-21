@@ -1,8 +1,27 @@
-import { neon } from "@neondatabase/serverless";
+
+let _neon;
+async function getNeonSql(dbUrl) {
+  if (!_neon) {
+    const mod = await import("@neondatabase/serverless");
+    _neon = mod.neon;
+  }
+  return _neon(dbUrl);
+}
+
+let _Stripe;
+async function createStripe(secretKey, options) {
+  if (!_Stripe) {
+    const mod = await import("stripe");
+    _Stripe = mod.default || mod;
+  }
+  return new _Stripe(secretKey, options);
+}
+
+
 import url from "url";
 import fs from "fs";
 import path from "path";
-import Stripe from "stripe";
+
 function getStripeKeys() {
   let secretKey = process.env.STRIPE_SECRET_KEY || "";
   let publishableKey = process.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
@@ -109,6 +128,12 @@ function parseJsonBody(req) {
 async function handleApiRequest(req, res) {
   const parsedUrl = url.parse(req.url || "", true);
   let pathname = parsedUrl.pathname || "";
+  if (parsedUrl.query && parsedUrl.query.__path) {
+    pathname = "/api/" + parsedUrl.query.__path;
+  } else if (req.headers["x-matched-path"] && req.headers["x-matched-path"].startsWith("/api")) {
+    pathname = req.headers["x-matched-path"];
+  }
+
   const matchedPath = req.headers["x-matched-path"];
   if (typeof matchedPath === "string" && matchedPath.startsWith("/api")) {
     pathname = matchedPath;
@@ -141,7 +166,7 @@ async function handleApiRequest(req, res) {
       );
     }
     try {
-      const sql = neon(dbUrl);
+      const sql = await getNeonSql(dbUrl);
       const result = await sql`SELECT 1 as connected, NOW() as server_time, version() as version`;
       res.statusCode = 200;
       return res.end(
@@ -172,7 +197,7 @@ async function handleApiRequest(req, res) {
       return res.end(JSON.stringify({ success: false, error: "Database not configured" }));
     }
     try {
-      const sql = neon(dbUrl);
+      const sql = await getNeonSql(dbUrl);
       const rows = await sql`
           SELECT * FROM products 
           ORDER BY updated_at DESC, name ASC
@@ -223,7 +248,7 @@ async function handleApiRequest(req, res) {
           })
         );
       }
-      const stripe = new Stripe(secretKey);
+      const stripe = await createStripe(secretKey);
       await stripe.paymentIntents.list({ limit: 1 });
       const envPath = path.resolve(process.cwd(), ".env.local");
       let envContent = "";
@@ -329,7 +354,7 @@ VITE_STRIPE_PUBLISHABLE_KEY="${publishableKey}"`;
           })
         );
       }
-      const stripe = new Stripe(secretKey, { apiVersion: "2026-03-25.dahlia" });
+      const stripe = await createStripe(secretKey, { apiVersion: "2026-03-25.dahlia" });
       let session;
       try {
         session = await stripe.checkout.sessions.create(sessionParams);
@@ -370,7 +395,7 @@ VITE_STRIPE_PUBLISHABLE_KEY="${publishableKey}"`;
       event = body;
       if (endpointSecret) {
         const { secretKey } = getStripeKeys();
-        const stripe = new Stripe(secretKey, { apiVersion: "2026-03-25.dahlia" });
+        const stripe = await createStripe(secretKey, { apiVersion: "2026-03-25.dahlia" });
         const signature = req.headers["stripe-signature"];
         if (signature) {
           try {
@@ -440,7 +465,7 @@ VITE_STRIPE_PUBLISHABLE_KEY="${publishableKey}"`;
           })
         );
       }
-      const stripe = new Stripe(secretKey);
+      const stripe = await createStripe(secretKey);
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amountInPence,
         currency: "gbp",
@@ -478,7 +503,7 @@ VITE_STRIPE_PUBLISHABLE_KEY="${publishableKey}"`;
       res.statusCode = 503;
       return res.end(JSON.stringify({ success: false, error: "Database not configured" }));
     }
-    const sql = neon(dbUrl);
+    const sql = await getNeonSql(dbUrl);
     if (req.method === "GET") {
       const orderNumber = parsedUrl.query.orderNumber;
       const lookup = parsedUrl.query.lookup;
@@ -622,7 +647,7 @@ VITE_STRIPE_PUBLISHABLE_KEY="${publishableKey}"`;
         res.statusCode = 400;
         return res.end(JSON.stringify({ success: false, error: "Email is required" }));
       }
-      const sql = neon(dbUrl);
+      const sql = await getNeonSql(dbUrl);
       await sql`
           INSERT INTO newsletter_subscribers (email)
           VALUES (${body.email.trim().toLowerCase()})
@@ -642,7 +667,7 @@ VITE_STRIPE_PUBLISHABLE_KEY="${publishableKey}"`;
     }
     try {
       const body = await parseJsonBody(req);
-      const sql = neon(dbUrl);
+      const sql = await getNeonSql(dbUrl);
       await sql`
           INSERT INTO contact_messages (name, email, order_number, subject, message)
           VALUES (
@@ -694,7 +719,7 @@ VITE_STRIPE_PUBLISHABLE_KEY="${publishableKey}"`;
       res.statusCode = 503;
       return res.end(JSON.stringify({ success: false, error: "Neon database not configured" }));
     }
-    const sql = neon(dbUrl);
+    const sql = await getNeonSql(dbUrl);
     if (pathname === "/api/admin/verify" && req.method === "GET") {
       res.statusCode = 200;
       return res.end(JSON.stringify({ success: true, authenticated: true, neonBranch: getNeonBranch() }));
@@ -873,5 +898,16 @@ export {
 };
 
 export default async function handler(req, res) {
-  return handleApiRequest(req, res);
+  try {
+    return await handleApiRequest(req, res);
+  } catch (err) {
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({
+      success: false,
+      error: "Internal Serverless Function Error",
+      message: err.message,
+      stack: err.stack
+    }));
+  }
 }
