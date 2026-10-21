@@ -3,15 +3,11 @@ import {
   ShieldCheck,
   Lock,
   Truck,
-  CreditCard,
   Check,
   AlertCircle,
   Tag,
-  Key,
-  ExternalLink,
   RefreshCw,
   CheckCircle2,
-  Save,
 } from 'lucide-react';
 import { useShop } from '../context/ShopContext';
 import { Breadcrumbs } from '../components/common/Breadcrumbs';
@@ -22,20 +18,22 @@ interface CheckoutPageProps {
   onOrderComplete: (order: OrderConfirmationData) => void;
 }
 
+const DEFAULT_STRIPE_PUB_KEY = 'pk_live_51TAtERHFkZ7AL18tl7fnD0DgoBGVtILMXubJk5vpBQTr4JelhknSro4Uu5Jmuhz3J4IdQQSCiGUiCxzSGncNIQCC00o17ZvQim';
+
 // Embedded Form appearance configuration specified by Checkout Studio
 const appearance = {
   theme: 'stripe',
   labels: 'auto',
   inputs: 'spaced',
   variables: {
-    borderRadius: '4px',
+    borderRadius: '8px',
     colorBackground: '#ffffff',
     colorDanger: '#df1b41',
-    colorPrimary: '#0570de',
+    colorPrimary: '#064e3b',
     colorSuccess: '#00c853',
-    colorText: '#30313d',
+    colorText: '#0f172a',
     fontFamily: 'default',
-    fontSizeBase: '16px',
+    fontSizeBase: '15px',
     spacingUnit: '4px',
   },
 };
@@ -55,26 +53,50 @@ const EmbeddedCheckoutForm: React.FC<{
 
     async function mountCheckout() {
       try {
-        const stripeGlobal = (window as any).Stripe;
+        setLoading(true);
+        setInitError(null);
+
+        // Wait for Stripe.js library to load
+        let stripeGlobal = (window as any).Stripe;
         if (!stripeGlobal) {
-          throw new Error('Stripe.js Dahlia SDK not loaded from https://js.stripe.com/dahlia/stripe.js');
+          for (let i = 0; i < 30; i++) {
+            await new Promise((r) => setTimeout(r, 100));
+            if ((window as any).Stripe) {
+              stripeGlobal = (window as any).Stripe;
+              break;
+            }
+          }
+        }
+
+        if (!stripeGlobal) {
+          throw new Error('Stripe.js SDK is loading. Please check your network connection.');
         }
 
         const stripe = stripeGlobal(publishableKey);
 
-        const clientSecret = fetch('/api/create-checkout-session', {
+        const res = await fetch('/api/create-checkout-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ items }),
-        })
-          .then((response) => response.json())
-          .then((json) => json.client_secret);
+        });
+
+        const data = await res.json();
+        if (!data || (!data.client_secret && data.error)) {
+          throw new Error(data?.error || 'Failed to initialize Stripe checkout session');
+        }
+
+        const clientSecret = data.client_secret;
+
+        if (typeof stripe.initCheckoutFormSdk !== 'function') {
+          throw new Error('Stripe Dahlia Checkout Form SDK is initializing...');
+        }
 
         const checkout = stripe.initCheckoutFormSdk({ clientSecret, appearance });
         const form = checkout.createForm({ layout: 'expanded' });
 
         const container = document.getElementById('checkout-form');
         if (container && isMounted) {
+          container.innerHTML = '';
           form.mount('#checkout-form');
         }
 
@@ -93,6 +115,7 @@ const EmbeddedCheckoutForm: React.FC<{
         if (isMounted) setLoading(false);
       } catch (err: any) {
         if (isMounted) {
+          console.warn('Stripe checkout form init notice:', err);
           setInitError(err.message);
           setLoading(false);
         }
@@ -104,23 +127,23 @@ const EmbeddedCheckoutForm: React.FC<{
     return () => {
       isMounted = false;
     };
-  }, [publishableKey]);
+  }, [publishableKey, items]);
 
   return (
     <div className="space-y-4">
       {loading && (
-        <div className="py-6 text-center text-slate-500 flex items-center justify-center gap-2">
-          <RefreshCw size={16} className="animate-spin text-emerald-800" />
-          <span className="text-xs font-semibold">Loading Stripe Checkout Embedded Form...</span>
+        <div className="py-8 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
+          <RefreshCw size={20} className="animate-spin text-emerald-800" />
+          <span className="text-xs font-semibold">Initializing secure Stripe card checkout...</span>
         </div>
       )}
       {initError && (
-        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs">
-          <p className="font-bold">Embedded Form Notice</p>
-          <p className="mt-0.5">{initError}</p>
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs">
+          <p className="font-bold">Payment Gateway Notice</p>
+          <p className="mt-1">{initError}</p>
         </div>
       )}
-      <div id="checkout-form" className="min-h-[180px] bg-white p-4 rounded-xl border border-slate-200"></div>
+      <div id="checkout-form" className={`min-h-[220px] bg-white p-4 rounded-xl border border-slate-200 ${loading ? 'hidden' : 'block'}`}></div>
     </div>
   );
 };
@@ -152,21 +175,17 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onOrderComplete }) =
   const [country] = useState('United Kingdom');
   const [deliveryMethod, setDeliveryMethod] = useState<'rm48' | 'rm24' | 'dpd'>('rm48');
 
-  // Stripe State
-  const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
+  // Stripe State (pre-configured with live publishable key)
+  const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse>({
+    configured: true,
+    publishableKey: (import.meta as any).env?.VITE_STRIPE_PUBLISHABLE_KEY || DEFAULT_STRIPE_PUB_KEY,
+    currency: 'gbp',
+  });
   const [orderNumber] = useState<string>(() => `CP-${Math.floor(100000 + Math.random() * 900000)}`);
-
-  // Stripe Key Setup Modal / Inline Form State
-  const [showStripeKeyInput, setShowStripeKeyInput] = useState(false);
-  const [inputSecretKey, setInputSecretKey] = useState('');
-  const [inputPublishableKey, setInputPublishableKey] = useState('');
-  const [isSavingKeys, setIsSavingKeys] = useState(false);
-  const [keySaveMessage, setKeySaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Form & validation errors
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState('');
-  const [isDemoProcessing, setIsDemoProcessing] = useState(false);
 
   // Promo Code
   const [checkoutPromoInput, setCheckoutPromoInput] = useState('');
@@ -203,38 +222,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onOrderComplete }) =
   const checkStripeConfig = async () => {
     try {
       const config = await api.getStripeConfig();
-      setStripeConfig(config);
+      if (config && config.publishableKey) {
+        setStripeConfig(config);
+      }
     } catch (err) {
       console.warn('Failed to fetch stripe config:', err);
-    }
-  };
-
-  // Handle saving Stripe Keys from inline form
-  const handleSaveStripeKeys = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputSecretKey.trim() || !inputPublishableKey.trim()) {
-      setKeySaveMessage({ type: 'error', text: 'Please enter both the Secret Key and Publishable Key.' });
-      return;
-    }
-
-    setIsSavingKeys(true);
-    setKeySaveMessage(null);
-
-    const res = await api.saveStripeConfig({
-      secretKey: inputSecretKey.trim(),
-      publishableKey: inputPublishableKey.trim(),
-    });
-
-    setIsSavingKeys(false);
-
-    if (res.success) {
-      setKeySaveMessage({ type: 'success', text: 'Stripe keys validated and saved securely! Activating payment gateway...' });
-      setStripeConfig({ configured: true, publishableKey: inputPublishableKey.trim() });
-      setTimeout(() => {
-        setShowStripeKeyInput(false);
-      }, 1200);
-    } else {
-      setKeySaveMessage({ type: 'error', text: res.error || 'Failed to validate Stripe keys. Please double-check your keys.' });
     }
   };
 
@@ -300,20 +292,6 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onOrderComplete }) =
     clearCart();
     onOrderComplete(orderData);
     navigate('order-confirmation');
-  };
-
-  const handleDemoOrderSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-
-    if (!validateDeliveryDetails()) {
-      setErrorMessage('Please complete all required delivery details marked in red above.');
-      return;
-    }
-
-    setIsDemoProcessing(true);
-    await completeOrder();
-    setIsDemoProcessing(false);
   };
 
   if (cart.length === 0) {
@@ -717,156 +695,31 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onOrderComplete }) =
                   <span className="w-6 h-6 rounded-full bg-emerald-900 text-white text-xs flex items-center justify-center font-sans font-bold">
                     4
                   </span>
-                  Stripe Checkout (Embedded Form)
+                  Payment Method (Stripe 256-Bit SSL)
                 </h2>
                 <div className="flex items-center gap-1.5 text-xs text-emerald-800 font-bold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
                   <Lock size={12} />
-                  <span>Stripe Dahlia SDK</span>
+                  <span>Stripe Dahlia Embedded Form</span>
                 </div>
               </div>
 
-              {/* Stripe Configured: Render Embedded Checkout Form */}
-              {stripeConfig?.configured && stripeConfig.publishableKey ? (
-                <div className="space-y-4">
-                  <EmbeddedCheckoutForm
-                    publishableKey={stripeConfig.publishableKey}
-                    items={cart}
-                    onPaymentSuccess={() => completeOrder('stripe_checkout_session')}
-                    onError={(msg) => setErrorMessage(msg)}
-                  />
-                </div>
-              ) : (
-                /* Stripe Setup & Connect Banner */
-                <div className="space-y-4">
-                  <div className="p-5 rounded-2xl bg-emerald-50/80 border-2 border-emerald-300 text-slate-800">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-800 text-white flex items-center justify-center shrink-0">
-                        <CreditCard size={20} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <h3 className="text-sm font-bold text-slate-950 font-serif">
-                            Connect Your Stripe Account
-                          </h3>
-                          <span className="px-2.5 py-0.5 bg-amber-100 text-amber-950 border border-amber-300 rounded-full text-[10px] font-extrabold uppercase">
-                            Awaiting Keys
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-600 mt-1 font-medium leading-relaxed">
-                          Your app is fully configured for Stripe Checkout Embedded Form (<code className="font-mono text-emerald-900 font-bold">ui_mode: "form"</code>). Enter your Stripe API keys below or in <code className="font-mono text-emerald-900 font-bold">.env.local</code>.
-                        </p>
+              {/* Embedded Checkout Form */}
+              <div className="space-y-4">
+                <EmbeddedCheckoutForm
+                  publishableKey={stripeConfig?.publishableKey || DEFAULT_STRIPE_PUB_KEY}
+                  items={cart}
+                  onPaymentSuccess={() => completeOrder('stripe_checkout_session')}
+                  onError={(msg) => setErrorMessage(msg)}
+                />
+              </div>
 
-                        {!showStripeKeyInput ? (
-                          <div className="mt-4 flex flex-wrap items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setShowStripeKeyInput(true)}
-                              className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-                            >
-                              <Key size={14} />
-                              <span>Enter Stripe API Keys</span>
-                            </button>
-                            <a
-                              href="https://dashboard.stripe.com/apikeys"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs font-bold text-emerald-900 hover:underline inline-flex items-center gap-1"
-                            >
-                              <span>Get Keys from Stripe Dashboard</span>
-                              <ExternalLink size={12} />
-                            </a>
-                          </div>
-                        ) : (
-                          <form onSubmit={handleSaveStripeKeys} className="mt-4 space-y-3 bg-white p-4 rounded-xl border border-emerald-200">
-                            {keySaveMessage && (
-                              <div
-                                className={`p-3 rounded-lg text-xs font-semibold ${
-                                  keySaveMessage.type === 'success'
-                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                                    : 'bg-red-100 text-red-900 border border-red-300'
-                                }`}
-                              >
-                                {keySaveMessage.text}
-                              </div>
-                            )}
-
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-800 uppercase mb-1">
-                                Publishable Key (VITE_STRIPE_PUBLISHABLE_KEY: pk_test_... or pk_live_...) *
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                placeholder="pk_test_..."
-                                value={inputPublishableKey}
-                                onChange={(e) => setInputPublishableKey(e.target.value)}
-                                className="w-full font-mono text-xs p-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-700"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-800 uppercase mb-1">
-                                Secret Key (STRIPE_SECRET_KEY: sk_test_... or sk_live_...) *
-                              </label>
-                              <input
-                                type="password"
-                                required
-                                placeholder="sk_test_..."
-                                value={inputSecretKey}
-                                onChange={(e) => setInputSecretKey(e.target.value)}
-                                className="w-full font-mono text-xs p-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-700"
-                              />
-                            </div>
-
-                            <div className="flex items-center justify-end gap-2 pt-1">
-                              <button
-                                type="button"
-                                onClick={() => setShowStripeKeyInput(false)}
-                                className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="submit"
-                                disabled={isSavingKeys}
-                                className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
-                              >
-                                {isSavingKeys ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-                                <span>Save &amp; Activate Stripe</span>
-                              </button>
-                            </div>
-                          </form>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Fallback Demo Checkout Button */}
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={handleDemoOrderSubmit}
-                      disabled={isDemoProcessing}
-                      className="w-full py-3.5 px-4 bg-slate-900 hover:bg-black text-white font-bold rounded-xl text-xs transition-all shadow flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      {isDemoProcessing ? (
-                        <>
-                          <RefreshCw size={14} className="animate-spin text-white" />
-                          <span>Confirming Order...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Check size={14} />
-                          <span>Place Demo Order (£{grandTotal.toFixed(2)}) without Stripe Keys</span>
-                        </>
-                      )}
-                    </button>
-                    <p className="text-[11px] text-center text-slate-500 mt-2 font-medium">
-                      Simulates order placement, creates GPS tracking reference, and persists order into Neon Postgres.
-                    </p>
-                  </div>
-                </div>
-              )}
+              <div className="pt-2 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100">
+                <span className="flex items-center gap-1.5 font-medium">
+                  <ShieldCheck size={14} className="text-emerald-700" />
+                  <span>Encrypted &amp; processed directly by Stripe UK</span>
+                </span>
+                <span className="font-semibold text-slate-700">PCI-DSS Level 1 Certified</span>
+              </div>
             </div>
           </div>
 

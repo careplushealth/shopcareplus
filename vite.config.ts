@@ -6,6 +6,7 @@ import verifyHandler from './api/admin/verify.js';
 import healthHandler from './api/health.js';
 import productsHandler from './api/products.js';
 import stripeConfigHandler from './api/stripe-config.js';
+import createCheckoutSessionHandler from './api/create-checkout-session.js';
 
 function neonApiPlugin(): Plugin {
   return {
@@ -44,6 +45,14 @@ function neonApiPlugin(): Plugin {
         }
         if (pathname === '/api/stripe-config') {
           return stripeConfigHandler(req, res);
+        }
+        if (pathname === '/api/create-checkout-session') {
+          if (!req.body) {
+            let body = '';
+            for await (const chunk of req) body += chunk;
+            try { req.body = JSON.parse(body); } catch { req.body = {}; }
+          }
+          return createCheckoutSessionHandler(req, res);
         }
 
         next();

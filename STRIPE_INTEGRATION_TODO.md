@@ -9,6 +9,7 @@ This document is the single source of truth for the Stripe Checkout integration 
 The following values are placeholders and must be updated before going live.
 
 **Files containing placeholders:**
+- [api/create-checkout-session.js](api/create-checkout-session.js)
 - [vite.config.ts](vite.config.ts)
 - [.env.local](.env.local)
 
@@ -16,17 +17,18 @@ The following values are placeholders and must be updated before going live.
 |-------|--------------|-------------|
 | `mode` | `payment` | Set to `"payment"` for one-time purchases or `"subscription"` for recurring replenishment orders. |
 | `line_items[].price` | `price_...` (or dynamic cart `price_data`) | Your actual Stripe Price ID from your Stripe Dashboard ([https://dashboard.stripe.com/prices](https://dashboard.stripe.com/prices)) or created via API. |
-| `STRIPE_SECRET_KEY` | `sk_live_...` *(Configured in .env.local)* | Live secret key active in private `.env.local` file (never commit). |
-| `VITE_STRIPE_PUBLISHABLE_KEY` | `pk_live_...` *(Configured in .env.local)* | Live publishable key active in private `.env.local` file. |
+| `STRIPE_SECRET_KEY` | `sk_live_...` *(Configured in .env.local / Vercel)* | Live secret key active in private `.env.local` file and Vercel Environment Variables. |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | `pk_live_...` *(Configured in .env.local)* | Live publishable key active in private `.env.local` file and frontend build. |
 | `STRIPE_WEBHOOK_SECRET` | *(Optional / pending)* | Webhook signing secret starting with `whsec_...` from [https://dashboard.stripe.com/workbench/webhooks](https://dashboard.stripe.com/workbench/webhooks) (if receiving webhooks). |
 
 ---
 
 ## Configured Parameters
 
-These parameters were configured in Checkout Studio and are already set correctly in [vite.config.ts](vite.config.ts) and [src/pages/CheckoutPage.tsx](src/pages/CheckoutPage.tsx).
+These parameters were configured in Checkout Studio and are already set correctly in [api/create-checkout-session.js](api/create-checkout-session.js), [vite.config.ts](vite.config.ts), and [src/pages/CheckoutPage.tsx](src/pages/CheckoutPage.tsx).
 
 **Files containing these parameters:**
+- [api/create-checkout-session.js](api/create-checkout-session.js)
 - [vite.config.ts](vite.config.ts)
 - [src/pages/CheckoutPage.tsx](src/pages/CheckoutPage.tsx)
 
